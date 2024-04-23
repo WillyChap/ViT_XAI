@@ -15,3 +15,4 @@ if __name__ == "__main__":
     img = torch.randn(1, 3, 256, 256)  #Batch, Variable, Lon, Lat
     preds = v(img) # (1, num_classes)
     print('I did it.')
+    
