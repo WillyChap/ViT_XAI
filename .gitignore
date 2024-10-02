@@ -115,3 +115,6 @@ dmypy.json
 
 # NetCDF files
 *.nc
+
+# dask
+Models/dask-worker.*
