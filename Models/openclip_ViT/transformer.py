@@ -647,8 +647,9 @@ class VisionTransformer(nn.Module):
 
         if self.output_tokens:
             return pooled, tokens
-        
-        return pooled
+
+        sigmoid = torch.nn.Sigmoid()
+        return sigmoid(pooled)
 
 
 def text_global_pool(x, text: Optional[torch.Tensor] = None, pool_type: str = 'argmax'):
