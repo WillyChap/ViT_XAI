@@ -35,6 +35,21 @@ def calcroll_anom(data):
     return anom
 
 
+def calcroll_anomERA5(data):
+    # Calculate CLIM
+    climatology = data.groupby('time.dayofyear').mean('time')
+        
+    climCyclical = xr.concat([climatology, climatology, climatology], dim="dayofyear")
+    climSmooth0 = climCyclical.rolling(dayofyear=31, center=True).mean()
+    climSmooth0 = climSmooth0.rolling(dayofyear=31, center=True).mean()
+    climSmooth = climSmooth0.isel(dayofyear=slice(365, 365+365))
+
+    # Calculate ANOMALIES
+    anom = data.groupby('time.dayofyear')-climSmooth
+
+    return anom
+
+
 def get_alldata(ddir):
     root_dir = Path(ddir)
     # have to specify these mems because some init days have more than 11 mems
