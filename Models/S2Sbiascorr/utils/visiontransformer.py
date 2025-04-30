@@ -1,6 +1,15 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
+
+'''
+ViT Code Credit (29 April 2025): 
+    https://medium.com/correll-lab/building-a-vision-transformer-model-from-scratch-a3054f707cc6
+
+Updated by Kirsten Mayer (29 April 2025)
+'''
+
 
 def conv_couplet(in_channels, out_channels, act_fun, *args, **kwargs):
     if act_fun == "Linear":
@@ -99,7 +108,7 @@ class PositionalEncoding(nn.Module):
         tokens_batch = self.cls_token.expand(x.size()[0], -1, -1)
         
         # Adding class tokens to the beginning of each embedding
-        x = torch.cat((tokens_batch,x), dim=1)
+        x = torch.cat((tokens_batch, x), dim=1)
         
         # Add positional encoding to embeddings
         x = x + self.pe
@@ -167,14 +176,13 @@ class TransformerEncoder(nn.Module):
       
 
 class VisionTransformer(nn.Module):
-    def __init__(self, d_model, n_classes, img_size, patch_size, n_channels, n_heads, n_layers, decoder_config):
+    def __init__(self, d_model, img_size, patch_size, n_channels, n_heads, n_layers, decoder_config):
         super().__init__()
     
         assert img_size[0] % patch_size[0] == 0 and img_size[1] % patch_size[1] == 0, "img_size dimensions must be divisible by patch_size dimensions"
         assert d_model % n_heads == 0, "d_model must be divisible by n_heads"
     
         self.d_model = d_model # Dimensionality of model
-        self.n_classes = n_classes # Number of classes
         self.img_size = img_size # Image size
         self.patch_size = patch_size # Patch size
         self.n_channels = n_channels # Number of channels
@@ -223,6 +231,10 @@ class VisionTransformer(nn.Module):
         # print(x.shape)
         
         x = self.upconv(x)
-        x = self.conv(x)
+        out = self.conv(x)
         # print(x.shape)
-        return x
+
+        mu = out[:, 0]
+        sigma = F.softplus(out[:, 1]) + 1e-3
+        
+        return mu, sigma
