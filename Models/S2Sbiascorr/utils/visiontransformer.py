@@ -200,7 +200,7 @@ class VisionTransformer(nn.Module):
             in_channels=self.d_model,
             out_channels=decoder_config["filters"][0],
             kernel_size=decoder_config["kernel_size"][0],
-            act_fun=decoder_config["act_func"][0],
+            act_fun=decoder_config["up_act_func"][1],
             padding=decoder_config["padding"][0],
             output_padding=decoder_config["output_padding"][0],
             stride=decoder_config["stride"]
@@ -208,12 +208,21 @@ class VisionTransformer(nn.Module):
 
         self.conv = conv_couplet(
             in_channels=decoder_config["filters"][0],
-            out_channels=decoder_config["filters"][-1],
+            out_channels=decoder_config["filters"][0],
             kernel_size=decoder_config["kernel_size"][0],
             act_fun=decoder_config["act_func"][0],
             padding="same",
             stride=1
         )
+
+        self.convout = conv_couplet(
+                in_channels=decoder_config["filters"][0],
+                out_channels=decoder_config["filters"][-1],
+                kernel_size=decoder_config["kernel_size"][0],
+                act_fun=decoder_config["act_func"][1],
+                padding="same",
+                stride=1
+            )
 
     def forward(self, images):
         x = self.patch_embedding(images)
@@ -223,18 +232,28 @@ class VisionTransformer(nn.Module):
         x = self.transformer_encoder(x)
         # print(x.shape)
         
-        B, N, D = x[:, 1:, :].shape  # skip cls token
-        H = int(self.img_size[0]/self.patch_size[0])
-        W = int(self.img_size[1]/self.patch_size[1])
-        x = x[:, 1:, :].permute(0, 2, 1)  # [B, D, N]
-        x = x.view(B, D, H, W)
-        # print(x.shape)
-        
-        x = self.upconv(x)
-        out = self.conv(x)
+        # B, N, D = x[:, 1:, :].shape  # skip cls token
+        # H = int(self.img_size[0]/self.patch_size[0])
+        # W = int(self.img_size[1]/self.patch_size[1])
+        # x = x[:, 1:, :].permute(0, 2, 1)  # [B, D, N]
+        # x = x.view(B, D, H, W)
         # print(x.shape)
 
-        mu = out[:, 0]
-        sigma = F.softplus(out[:, 1]) + 1e-3
+        # 16x64
+        x = x[:,0] # grab cls token (or do average pooling over all the patches)
+        # add dense layer 18x36 = 648
+        x = self.dense(x)  
+        # 16, 18, 36
+        X = x.reshape() 
+
+        # Convolve up to 180x360
+        # x = self.upconv(x)
+        # x = self.conv(x)
+        x = self.upconv(x)
+        out = self.convout(x)
+        # print(x.shape)
+
+        # mu = out[:, 0]
+        # sigma = F.softplus(out[:, 1]) + 1e-3
         
-        return mu, sigma
+        return out #mu, sigma
