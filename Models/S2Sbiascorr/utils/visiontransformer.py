@@ -10,7 +10,14 @@ ViT Code Credit (29 April 2025):
 Updated by Kirsten Mayer (29 April 2025)
 '''
 
+def dense(in_features, out_features, act_fun=True, reshape_shape=(18,36), *args, **kwargs):
 
+        return torch.nn.Sequential(
+            torch.nn.Linear(in_features=in_features, out_features=out_features, bias=True),
+            getattr(torch.nn, act_fun)(),
+            nn.Unflatten(1, (reshape_shape))
+        )
+        
 def conv_couplet(in_channels, out_channels, act_fun, *args, **kwargs):
     if act_fun == "Linear":
         return torch.nn.Sequential(
@@ -194,32 +201,52 @@ class VisionTransformer(nn.Module):
         self.patch_embedding = PatchEmbedding(self.d_model, self.img_size, self.patch_size, self.n_channels)
         self.positional_encoding = PositionalEncoding( self.d_model, self.max_seq_length)
         self.transformer_encoder = nn.Sequential(*[TransformerEncoder( self.d_model, self.n_heads) for _ in range(n_layers)])
+
+        self.decoder_config = decoder_config
     
         # Decoder
-        self.upconv = upconv_couplet(
-            in_channels=self.d_model,
-            out_channels=decoder_config["filters"][0],
+        self.dense1 = dense(
+            in_features=decoder_config["hiddens_final_in"],
+            out_features=decoder_config["hiddens_final_out"][0],
+            act_fun=decoder_config["hiddens_act_func"][0],
+            reshape_shape=decoder_config["reshape_shape"]
+            )
+
+        
+        self.upconv1 = upconv_couplet(
+            in_channels=decoder_config["filters"][0],
+            out_channels=decoder_config["filters"][1],
             kernel_size=decoder_config["kernel_size"][0],
             act_fun=decoder_config["up_act_func"][1],
             padding=decoder_config["padding"][0],
             output_padding=decoder_config["output_padding"][0],
-            stride=decoder_config["stride"]
+            stride=decoder_config["stride"][0]
         )
 
-        self.conv = conv_couplet(
-            in_channels=decoder_config["filters"][0],
-            out_channels=decoder_config["filters"][0],
+        self.conv1 = conv_couplet(
+            in_channels=decoder_config["filters"][1],
+            out_channels=decoder_config["filters"][1],
             kernel_size=decoder_config["kernel_size"][0],
             act_fun=decoder_config["act_func"][0],
             padding="same",
             stride=1
         )
 
-        self.convout = conv_couplet(
-                in_channels=decoder_config["filters"][0],
-                out_channels=decoder_config["filters"][-1],
-                kernel_size=decoder_config["kernel_size"][0],
-                act_fun=decoder_config["act_func"][1],
+        self.upconv2 = upconv_couplet(
+            in_channels=decoder_config["filters"][1],
+            out_channels=decoder_config["filters"][2],
+            kernel_size=decoder_config["kernel_size"][1],
+            act_fun=decoder_config["up_act_func"][1],
+            padding=decoder_config["padding"][1],
+            output_padding=decoder_config["output_padding"][1],
+            stride=decoder_config["stride"][1]
+        )
+
+        self.conv2 = conv_couplet(
+                in_channels=decoder_config["filters"][2],
+                out_channels=decoder_config["filters"][2],
+                kernel_size=decoder_config["kernel_size"][-1],
+                act_fun=decoder_config["act_func"][-1],
                 padding="same",
                 stride=1
             )
@@ -239,21 +266,22 @@ class VisionTransformer(nn.Module):
         # x = x.view(B, D, H, W)
         # print(x.shape)
 
-        # 16x64
+        # 16(batch)x64(D_MODEL)
         x = x[:,0] # grab cls token (or do average pooling over all the patches)
+        # print(x.shape)
         # add dense layer 18x36 = 648
-        x = self.dense(x)  
-        # 16, 18, 36
-        X = x.reshape() 
-
-        # Convolve up to 180x360
-        # x = self.upconv(x)
-        # x = self.conv(x)
-        x = self.upconv(x)
-        out = self.convout(x)
+        x = self.dense1(x)  
+        # 16, 1, 18, 36
         # print(x.shape)
 
-        # mu = out[:, 0]
-        # sigma = F.softplus(out[:, 1]) + 1e-3
+        # Convolve up to 180x360
+        x = self.upconv1(x)
+        x = self.conv1(x)
+        x = self.upconv2(x)
+        out = self.conv2(x)
+        # print(x.shape)
+
+        mu = out[:, 0]
+        sigma = F.softplus(out[:, 1]) + 1e-3
         
-        return out #mu, sigma
+        return mu, sigma
